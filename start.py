@@ -7,12 +7,11 @@ import os
 import shelve
 import uuid
 import json
+from Queue import *
 
 VALID_KEY = re.compile('[a-zA-Z0-9_-]{1,255}')
 
-urls = (
-        '/(.*)', 'MemoryDB',
-        )
+urls = ('/(.*)', 'MemoryDB')
 
 def is_valid_key(key):
     if VALID_KEY.match(key) is not None:
@@ -60,9 +59,13 @@ class AbstractDB(object):
         if result is not None: 
             print result
             return json.dumps(result)
+
+
+testq = Queue()
         
 class MemoryDB(AbstractDB):
     database = {}
+    global testq
     def get_key(self, key):
         try:
             return self.database[key]
@@ -70,10 +73,21 @@ class MemoryDB(AbstractDB):
             web.notfound()
             
     def put_key(self, key, data):
+        item = {}
+        item['cmd'] = "INSERT"
+        item['key'] = key
+        item['data'] = data
+        testq.put(item)
+        print testq
         self.database[key] = data
     
     def delete_key(self, key):
         try:
+            item = {}
+            item['cmd'] = "DELETE"
+            item['key'] = key
+            testq.put(item)
+
             del(self.database[key])
         except KeyError:
             web.notfound()
@@ -85,11 +99,11 @@ class MemoryDB(AbstractDB):
 import asyncore, socket
 class Replicator(asyncore.dispatcher):
 
-    def __init__(self, host,port, path):
+    def __init__(self, host,port,cmd,key,value):
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect( (host, port) )
-        self.buffer = 'GET %s HTTP/1.0\r\n\r\n' % path
+        self.buffer = '%s:%s:%s' % (cmd,key,value)
 
     def handle_connect(self):
         pass
@@ -106,11 +120,9 @@ class Replicator(asyncore.dispatcher):
     def handle_write(self):
         sent = self.send(self.buffer)
         self.buffer = self.buffer[sent:]
-  
-    def rest_get(self):
-    def rest_post(self):
-    def rest_delete(self):
-    def rest_put(self):
+
+    def sadd_to_buffer(selfdata_to_send):
+        self.buffer += data_to_send
 
 
 def print_banner():
@@ -125,19 +137,33 @@ def print_banner():
 ''' + '\033[0m'
    print banner                            
 
-def async_task():
-   print "Async job starts"
-   client = Replicator('www.python.org',80,'/')
-   client2 = Replicator('www.python.org',80,'/')
-   asyncore.loop()
+def asd():
+  global testq
+  while True:
+    if testq.empty:
+      print "wait"
+      threading.wait()
+    print "thread enterloop"
+    item = ""
+    try:
+      item = testq.get(False)
+    except Empty:
+      print "Empty"
+    print item
+    print "thread exitloop"
 
 if __name__ == "__main__":
     print_banner() 
     app = web.application(urls, globals())
     print "Min-db is now listening"
+    
     import threading
-    threads=[]
-    t = threading.Thread(target=async_task)
-    threads.append(t)
-    t.start()
+    import time
+    #async que thread
+    threads = []
+    t1 = threading.Thread(target=asd)
+    threads.append(t1)
+    t1.daemon = True
+    t1.start()
+
     app.run()
