@@ -60,12 +60,9 @@ class AbstractDB(object):
             print result
             return json.dumps(result)
 
-
-testq = Queue()
         
 class MemoryDB(AbstractDB):
     database = {}
-    global testq
     def get_key(self, key):
         try:
             return self.database[key]
@@ -77,8 +74,7 @@ class MemoryDB(AbstractDB):
         item['cmd'] = "INSERT"
         item['key'] = key
         item['data'] = data
-        testq.put(item)
-        print testq
+        web.queue.put(item)
         self.database[key] = data
     
     def delete_key(self, key):
@@ -86,7 +82,7 @@ class MemoryDB(AbstractDB):
             item = {}
             item['cmd'] = "DELETE"
             item['key'] = key
-            testq.put(item)
+            web.queue.put(item)
 
             del(self.database[key])
         except KeyError:
@@ -137,33 +133,41 @@ def print_banner():
 ''' + '\033[0m'
    print banner                            
 
-def asd():
-  global testq
-  while True:
-    if testq.empty:
-      print "wait"
-      threading.wait()
-    print "thread enterloop"
-    item = ""
-    try:
-      item = testq.get(False)
-    except Empty:
-      print "Empty"
-    print item
-    print "thread exitloop"
 
+import threading
+import time
+
+class Dev(threading.Thread):
+
+    def __init__(self):
+        super(Dev, self).__init__()   # super() will call Thread.__init__ for you
+        self.workQueue = web.queue
+	
+    def run(self):  # put inside run your loop
+        while True:
+          time.sleep(1)
+          print "loop"
+          if self.workQueue.empty() == True:
+            print "Queue is empty"
+          else:
+            print "Queue is full"
+            print self.workQueue.get()
+            print self.workQueue.task_done()
+
+          
+        
 if __name__ == "__main__":
     print_banner() 
-    app = web.application(urls, globals())
+    web.app = web.application(urls, globals())
     print "Min-db is now listening"
-    
-    import threading
-    import time
-    #async que thread
-    threads = []
-    t1 = threading.Thread(target=asd)
-    threads.append(t1)
-    t1.daemon = True
-    t1.start()
 
-    app.run()
+    #Async Task Queue
+    web.queue = Queue()
+
+    #Background thread for replication
+    bg_thread = Dev()
+    bg_thread.daemon = True
+    bg_thread.start()
+
+    #Rest Api
+    web.app.run()
